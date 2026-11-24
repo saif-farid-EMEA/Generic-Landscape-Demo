@@ -143,12 +143,28 @@ snap restart landscape-debarchive
 # (port 443) section of Landscape's Apache config, just before its final
 # catch-all rule. The small Python program below does that edit, and does
 # nothing if the lines are already there.
+#
+# The config file's name depends on the Landscape version (it may be named
+# after the server, e.g. landscape.demo.internal.conf), so instead of guessing
+# the name, the program looks through every switched-on Apache site in
+# /etc/apache2/sites-enabled/ and picks the one with an HTTPS (port 443)
+# section that contains rewrite rules.
 python3 - <<'PY'
-import re
-path = "/etc/apache2/sites-available/landscape.conf"
+import glob, os, re, sys
+https_section = re.compile(r"<VirtualHost [^>]*:443>")
+path = None
+for candidate in sorted(glob.glob("/etc/apache2/sites-enabled/*")):
+    real = os.path.realpath(candidate)  # sites-enabled holds shortcuts; follow them
+    text = open(real).read()
+    if https_section.search(text) and "RewriteRule" in text:
+        path = real
+        break
+if path is None:
+    sys.exit("Could not find Landscape's HTTPS site in /etc/apache2/sites-enabled/")
+print(f"Adding Debarchive rules to {path}")
 text = open(path).read()
 if "localhost:8100" not in text:
-    start = text.index("<VirtualHost *:443>")
+    start = https_section.search(text).start()
     end = text.index("</VirtualHost>", start)
     block = text[start:end]
     last_rule = list(re.finditer(r"^[ \t]*RewriteRule\b.*$", block, re.M))[-1]
