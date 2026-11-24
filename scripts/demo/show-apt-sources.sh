@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # show-apt-sources.sh: prove the repository profile reached a client.
+# FALLBACK ONLY: the demo normally does this from the web portal (see
+# docs/04-run-of-show.md). Use this terminal version if the portal is slow.
 # Runs on: your host machine (your laptop), during the demo.
 # When: after you link the repository profile to machines in the portal.
 # Usage:   scripts/demo/show-apt-sources.sh [vm-name]   (default: web-01)

@@ -11,9 +11,14 @@ Set these up in the web portal so each demo section takes one or two clicks.
 - **Don't** apply updates before the snapshot.
 
 ## Remote scripting
-- **Scripts → Add script**: title `System report`, run as `root`, body from
-  [`assets/system-report.sh`](../assets/system-report.sh).
-- Optional: run `scripts/demo/run-script-via-api.sh` with no arguments to find its ID.
+Add these three scripts in **Scripts → Add script**. Run each as `root`, and paste
+the whole contents of its file as the script body:
+
+| Title | Body | Used in |
+|-------|------|---------|
+| `System report` | [`assets/system-report.sh`](../assets/system-report.sh) | Remote scripting |
+| `CPU spike` | [`assets/cpu-spike.sh`](../assets/cpu-spike.sh) | Monitoring (start it 2 min early) |
+| `Show APT sources` | [`assets/show-apt-sources.sh`](../assets/show-apt-sources.sh) | Repository management |
 
 ## Repository management (Landscape 26.04: done in the portal)
 

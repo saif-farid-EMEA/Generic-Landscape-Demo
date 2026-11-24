@@ -22,12 +22,16 @@ IP="$(server_ip)"
 # "${CLIENTS[@]}" means "every entry in the CLIENTS list". On each round,
 # the current entry is stored in "spec", e.g. "web-01:24.04:demo,web".
 for spec in "${CLIENTS[@]}"; do
-  # Split the entry at each ":" into three variables:
-  #   name="web-01"   release="24.04"   tags="demo,web"
+  # Split the entry at each ":" into four variables, e.g. for
+  # "db-01:24.04:demo,db:8G":
+  #   name="db-01"   release="24.04"   tags="demo,db"   mem="8G"
   # (IFS=: tells "read" to split on colons; "<<<" feeds it the text in $spec.)
-  IFS=: read -r name release tags <<< "$spec"
+  # If the entry has no memory part, "mem" is left empty.
+  IFS=: read -r name release tags mem <<< "$spec"
+  # "${mem:-$CLIENT_MEM}" means "use mem, or CLIENT_MEM if mem is empty".
+  mem="${mem:-$CLIENT_MEM}"
 
-  log "Launching $name (Ubuntu $release, tags: $tags)"
+  log "Launching $name (Ubuntu $release, $mem RAM, tags: $tags)"
   # Create and boot the client VM, unless it already exists.
   if vm_exists "$name"; then
     echo "$name already exists, skipping launch."
@@ -35,7 +39,7 @@ for spec in "${CLIENTS[@]}"; do
     # Same as the server launch in 01-launch-server.sh, but smaller and with
     # no cloud-init file. The "\" continues the command on the next line.
     multipass launch "$release" --name "$name" \
-      --cpus "$CLIENT_CPUS" --memory "$CLIENT_MEM" --disk "$CLIENT_DISK"
+      --cpus "$CLIENT_CPUS" --memory "$mem" --disk "$CLIENT_DISK"
   fi
 
   log "Registering $name with $FQDN"

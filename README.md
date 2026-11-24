@@ -9,14 +9,14 @@ It covers Landscape's five core functions:
 |----------|---------------------|
 | Monitoring & alerts | Live CPU graphs and alert counts |
 | Packages & upgrades | Pending security updates, applied from the portal |
-| Remote scripting | Running one script on many machines, from the portal or API |
+| Remote scripting | Running one script on many machines from the portal |
 | Repository management | An internal apt mirror (Debarchive) pushed to machines by tag |
 | Users & RBAC | Roles and access groups |
 
 ## Requirements
 
 - Ubuntu 22.04 or 24.04 desktop with KVM (tested target: ThinkPad P16s Gen 4, 32 GB RAM, Ubuntu 24.04)
-- About 14 GB free RAM and 80 GB free disk
+- About 20 GiB free RAM and 80 GB free disk
 - Internet access (for packages and the mirror sync)
 - This repo cloned **under your home folder**, because the Multipass snap can only read files there
 
@@ -40,9 +40,11 @@ scripts/
   09-preflight.sh       Demo-day health check
   99-cleanup.sh         Delete everything
   remote/               Scripts that run inside the VMs (pushed by the scripts above)
-  demo/                 Helpers you run live during the demo
+  demo/                 Terminal fallbacks for the portal demo steps
 assets/
-  system-report.sh      Script to paste into the Landscape portal
+  system-report.sh      Portal script: machine summary (remote scripting)
+  cpu-spike.sh          Portal script: CPU load on db-01 (monitoring)
+  show-apt-sources.sh   Portal script: proves the mirror arrived (repo management)
 docs/
   01-architecture.md    Lab layout and design choices
   02-first-login.md     Browser steps: admin account, API keys, accepting clients
@@ -77,7 +79,8 @@ chmod +x scripts/*.sh scripts/remote/*.sh scripts/demo/*.sh
 ➡️ Accept the three clients in the portal (**Computers → Pending**).
 
 ```bash
-# 6. Give the server your API keys and test the API
+# 6. (Optional) Give the server your API keys. Only the terminal fallback
+#    scripts/demo/run-script-via-api.sh needs this; the portal demo doesn't.
 ./scripts/05-api-setup.sh
 # 7. Create the mirror signing key and print the values for the portal
 ./scripts/06-repo-mirror.sh

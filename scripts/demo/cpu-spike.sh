@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # cpu-spike.sh: create CPU load on a client for the monitoring section.
+# FALLBACK ONLY: the demo normally does this from the web portal (see
+# docs/04-run-of-show.md). Use this terminal version if the portal is slow.
 # Runs on: your host machine (your laptop), during the demo.
 # When: start it about 2 minutes before you show the graphs, so the spike has
 #       time to appear in the portal.

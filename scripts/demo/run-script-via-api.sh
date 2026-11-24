@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # run-script-via-api.sh: run a saved Landscape script through the API.
+# FALLBACK ONLY: the demo normally does this from the web portal (see
+# docs/04-run-of-show.md). Use this terminal version if the portal is slow.
 # Runs on: your host machine (your laptop), during the demo. It runs the
 #          landscape-api tool inside the server VM for you.
 # Usage:   scripts/demo/run-script-via-api.sh <script-id> [query]
