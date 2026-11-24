@@ -4,7 +4,7 @@ Do this after `scripts/03-host-dns.sh` and before `scripts/05-api-setup.sh`.
 
 1. Open `https://landscape.demo.internal` and accept the self-signed certificate warning.
 2. Create the first **global administrator** (name, email, password). The account name is `standalone`.
-3. Open your account settings and **generate API credentials**.
+3. *(Optional, only for the terminal fallback `scripts/demo/run-script-via-api.sh`)* Open your account settings and **generate API credentials**.
 4. Copy the template and paste in your keys:
 
    ```bash
