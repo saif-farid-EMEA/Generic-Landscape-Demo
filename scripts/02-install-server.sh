@@ -12,6 +12,12 @@ set -euo pipefail
 # Load shared helpers and all settings from config/demo.env.
 source "$(dirname "$0")/lib.sh"
 
+# Read the Ubuntu Pro token from config/pro.env (stops here if it's missing),
+# then attach the server VM to Ubuntu Pro (skipped if already attached).
+load_pro_token
+log "Attaching $SERVER_VM to Ubuntu Pro"
+pro_attach "$SERVER_VM"
+
 log "Installing Landscape Server from $LANDSCAPE_PPA (about 10 minutes)"
 # run_remote_sudo (from lib.sh) copies a script into a VM and runs it as root
 # (administrator). The arguments are:
@@ -20,6 +26,11 @@ log "Installing Landscape Server from $LANDSCAPE_PPA (about 10 minutes)"
 #   3. "$LANDSCAPE_PPA"     passed on to that script: where to download
 #                           Landscape from (a PPA is an extra software source)
 #   4. "$FQDN"              the server's full name, used to set up the web server
-run_remote_sudo "$SERVER_VM" "$REPO_ROOT/scripts/remote/install-server.sh" "$LANDSCAPE_PPA" "$FQDN"
+#   5. "$SERVER_SWAP"       how much swap (overflow memory) to give the VM
+# The remote script ends with a health check and fails (stopping this script
+# too) if Landscape is not actually serving, so "installed" below is real.
+# Safe to run again: re-running it also repairs a half-finished install.
+run_remote_sudo "$SERVER_VM" "$REPO_ROOT/scripts/remote/install-server.sh" \
+  "$LANDSCAPE_PPA" "$FQDN" "$SERVER_SWAP"
 
-log "Landscape Server installed. Next: scripts/03-host-dns.sh"
+log "Landscape Server installed and healthy. Next: scripts/03-host-dns.sh"

@@ -1,5 +1,7 @@
 # Your Landscape API keys: never commit these
 config/api.env
+# Your Ubuntu Pro token: never commit it
+config/pro.env
 # Generated files (cloud-init etc.)
 build/
 # Exported GPG keys, if any end up in the repo

@@ -15,6 +15,32 @@ set -euo pipefail
 # Load shared helpers and all settings from config/demo.env.
 source "$(dirname "$0")/lib.sh"
 
+# Each client is attached to Ubuntu Pro before registering, which Landscape
+# requires. Read the token now, so a missing one stops us before any VM is made.
+load_pro_token
+
+# Before creating any client, make sure Landscape is actually running on the
+# server. Otherwise every registration would fail, one slow client at a time.
+log "Checking Landscape Server is running on $SERVER_VM"
+if ! multipass exec "$SERVER_VM" -- systemctl is-active --quiet \
+     landscape-appserver landscape-msgserver landscape-pingserver; then
+  echo "ERROR: Landscape Server is not running on $SERVER_VM." >&2
+  echo "Re-run ./scripts/02-install-server.sh (it repairs a half-finished install)." >&2
+  exit 1
+fi
+# Clients join the "standalone" account, which only exists once the first
+# administrator has been created in the browser (docs/02-first-login.md).
+# Without it every client fails with "Invalid account name or registration key".
+# This asks the server's database how many accounts are named "standalone".
+ACCOUNTS="$(multipass exec "$SERVER_VM" -- sudo -u postgres psql -d landscape-standalone-main \
+  -tAc "SELECT count(*) FROM account WHERE name='standalone'")"
+if [[ "$ACCOUNTS" != "1" ]]; then
+  echo "ERROR: Landscape has no administrator account yet." >&2
+  echo "Open https://$FQDN, create the first administrator (docs/02-first-login.md)," >&2
+  echo "then run this script again." >&2
+  exit 1
+fi
+
 # Look up the server VM's IP address so the clients can find it.
 IP="$(server_ip)"
 
@@ -41,6 +67,10 @@ for spec in "${CLIENTS[@]}"; do
     multipass launch "$release" --name "$name" \
       --cpus "$CLIENT_CPUS" --memory "$mem" --disk "$CLIENT_DISK"
   fi
+
+  log "Attaching $name to Ubuntu Pro"
+  # pro_attach (from lib.sh) skips VMs that are already attached.
+  pro_attach "$name"
 
   log "Registering $name with $FQDN"
   # Copy scripts/remote/register-client.sh into the client and run it as root.

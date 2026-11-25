@@ -27,6 +27,11 @@ Total: about 20 GiB RAM, leaving about 12 GiB for the host, browser and screen r
 - **8 GiB on db-01.** It runs the most demo scripts (the 4-minute CPU spike plus the
   System report), so it gets the extra memory. The other clients stay at 2 GiB to
   keep the laptop comfortable. Change it per client in `CLIENTS` in `config/demo.env`.
+- **Swap on the server.** Landscape's one-time setup briefly needs more than the server's
+  8 GiB while it loads its package database. `install-server.sh` adds an 8 GiB swap file
+  first (`SERVER_SWAP`), so the setup finishes instead of being killed by Linux's
+  out-of-memory killer. The script also checks that Landscape's services are really
+  running at the end, because the package reports success even when its setup fails.
 - **Multipass VMs.** These match the official Landscape tutorial, and snapshots make it easy to reset between rehearsals.
 - **`.internal` domain.** This domain is reserved for private use and doesn't clash with mDNS (`.local`).
 - **Fast client intervals.** Exchange every 60 s and ping every 10 s, so graphs,

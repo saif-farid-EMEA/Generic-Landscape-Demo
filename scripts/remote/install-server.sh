@@ -4,7 +4,7 @@
 # Runs on: the server VM, as root (administrator).
 # You don't run this yourself: scripts/02-install-server.sh copies it into the
 # VM and runs it for you.
-# Usage:   install-server.sh <landscape-ppa> <fqdn>
+# Usage:   install-server.sh <landscape-ppa> <fqdn> [swap-size, e.g. 8G]
 #
 # "Quickstart mode" installs everything Landscape needs on this one machine,
 # which is perfect for a demo (a real deployment would spread it out).
@@ -27,6 +27,39 @@ set -euo pipefail
 # the ones Ubuntu comes with. "$2" is the server's full name (FQDN).
 PPA="$1"
 FQDN="$2"
+# "$3" is how much swap to add; "${3:-8G}" means "use $3, or 8G if it's missing".
+SWAP_SIZE="${3:-8G}"
+
+# The Landscape services that must be running for the portal and the clients
+# to work: web portal, client messages, client "pings" and the API.
+CORE_SERVICES=(landscape-appserver landscape-msgserver landscape-pingserver landscape-api)
+
+# core_services_running: succeed only if every service above is running.
+# "systemctl is-active --quiet" succeeds for a running service, silently.
+core_services_running() { systemctl is-active --quiet "${CORE_SERVICES[@]}"; }
+
+# --- 0. Swap (overflow memory) ------------------------------------------------
+
+# Landscape's one-time setup ("landscape-quickstart") loads a big package
+# database and briefly needs more memory than the VM has. Without swap, Linux's
+# "out of memory killer" stops it halfway. The package then still reports
+# success, but Landscape's services are never started and clients can't
+# connect. A swap file on disk gives it room to finish.
+# "swapon --show" prints active swap; if it prints nothing, there is none yet.
+if [[ -z "$(swapon --show --noheadings)" ]]; then
+  echo "Adding $SWAP_SIZE of swap at /swapfile"
+  # Create the file once (re-runs reuse it), allocate its space up front, and
+  # make it readable only by root (it may hold copies of memory contents).
+  if [[ ! -f /swapfile ]]; then
+    fallocate -l "$SWAP_SIZE" /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+  fi
+  swapon /swapfile
+  # Also switch it on at every boot (only add the line once).
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+swapon --show
 
 # --- 1. Landscape Server itself ----------------------------------------------
 
@@ -46,6 +79,26 @@ apt-get update
 # installing; DEBIAN_FRONTEND=noninteractive tells them to use the default
 # answers instead, so the script never gets stuck waiting for you.
 DEBIAN_FRONTEND=noninteractive apt-get install -y landscape-server-quickstart
+
+# Make sure the setup really finished. The package's own install script runs
+# "landscape-quickstart" but ignores it if that fails (for example when it
+# runs out of memory): apt still says "success", yet Landscape's services
+# are never started. So we check for ourselves, and if they aren't running we
+# run the package's setup again ("dpkg-reconfigure" repeats it). This is also
+# what repairs a server left half-installed by an earlier attempt.
+for attempt in 1 2 3; do
+  core_services_running && break
+  echo "Landscape services are not running; re-running its setup (attempt $attempt of 3)"
+  DEBIAN_FRONTEND=noninteractive dpkg-reconfigure -fnoninteractive landscape-server-quickstart
+done
+# Still not running after three tries: stop here with a pointer to the logs,
+# instead of carrying on and leaving a broken server that looks fine.
+if ! core_services_running; then
+  echo "ERROR: Landscape's setup did not finish. Look at:" >&2
+  echo "  sudo tail -n 50 /var/log/landscape-server/landscape-quickstart.log" >&2
+  echo "  sudo journalctl -k | grep -i 'out of memory'" >&2
+  exit 1
+fi
 # Install "landscape-api", a command-line tool for talking to Landscape from
 # scripts (used later by setup-api.sh and the demo helpers).
 snap install landscape-api
@@ -204,10 +257,45 @@ EOF
 a2ensite filesystem-repo.conf
 systemctl restart apache2
 
-# --- 6. Quick health check -----------------------------------------------------
+# --- 6. Health check -------------------------------------------------------------
 
 # Show whether each helper service is running (look for "active").
 snap services landscape-task-handler landscape-outbox landscape-debarchive
-# Ask Debarchive through Apache. "401" (= "please log in") is the GOOD answer
-# here: it proves the forwarding works. Anything else means a problem.
-echo "Debarchive via Apache (401 expected): $(curl -sk -o /dev/null -w '%{http_code}' "https://$FQDN/debarchive/v1/mirrors")"
+
+# Ask Apache for each address the browser and the clients use, and check that
+# a real Landscape service answers behind it. Apache itself answers 502 or 503
+# when the service behind it is down, and curl prints 000 when nothing answers
+# at all; any other code (200, 302, 401, 405, ...) means it's alive.
+# Services take a little while to start, so we retry for up to 5 minutes.
+#   name|address
+CHECKS=(
+  "Web portal|https://$FQDN/"
+  "Client messages|https://$FQDN/message-system"
+  "Client pings|http://$FQDN/ping"
+  "API|https://$FQDN/api/"
+  "Debarchive|https://$FQDN/debarchive/v1/mirrors"
+)
+healthy=true
+for check in "${CHECKS[@]}"; do
+  # Split "name|address" at the "|".
+  name="${check%%|*}" url="${check#*|}"
+  # Try every 5 seconds, 60 times (= 5 minutes).
+  for _ in $(seq 60); do
+    # "|| true" keeps going if curl fails; we judge by the code it printed.
+    code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "$url" || true)"
+    [[ "$code" =~ ^(000|502|503|504)$ ]] || break
+    sleep 5
+  done
+  if [[ "$code" =~ ^(000|502|503|504)$ ]]; then
+    echo "FAIL  $name ($url): HTTP $code"
+    healthy=false
+  else
+    echo "OK    $name ($url): HTTP $code"
+  fi
+done
+if [[ "$healthy" != true ]]; then
+  echo "ERROR: Landscape Server is installed but not answering. Check:" >&2
+  echo "  sudo lsctl status" >&2
+  exit 1
+fi
+echo "Landscape Server is up at https://$FQDN/"

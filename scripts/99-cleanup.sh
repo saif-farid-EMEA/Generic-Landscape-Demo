@@ -22,9 +22,20 @@ read -r -p "Delete ALL demo VMs and snapshots? Type 'yes' to continue: " answer
 [[ "$answer" == "yes" ]] || { echo "Aborted."; exit 0; }
 
 log "Deleting VMs"
-# Delete every VM in the lab. "--purge" frees the disk space immediately
-# instead of keeping deleted VMs around in a recoverable state.
-multipass delete --purge $(all_vms)
+# Delete every lab VM that exists. VMs that were never created (for example
+# after a setup that stopped halfway) are skipped: asking Multipass to delete
+# a VM that isn't there is an error, which would stop this script early.
+# "--purge" frees the disk space immediately instead of keeping deleted VMs
+# around in a recoverable state.
+# Each VM is first detached from Ubuntu Pro, which frees its place on your Pro
+# token; otherwise every rebuild would use up more of the token's machines.
+for vm in $(all_vms); do
+  if vm_exists "$vm"; then
+    pro_detach "$vm"
+    multipass delete --purge "$vm"
+    echo "Deleted $vm"
+  fi
+done
 
 log "Removing the server name from /etc/hosts"
 # Delete the line that 03-host-dns.sh added to your laptop's /etc/hosts file

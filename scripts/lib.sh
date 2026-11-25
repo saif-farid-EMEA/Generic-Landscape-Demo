@@ -99,3 +99,74 @@ all_vms() {
   # ":" onward, leaving only the VM name ("web-01").
   for spec in "${CLIENTS[@]}"; do echo "${spec%%:*}"; done
 }
+
+# load_pro_token: read your Ubuntu Pro token from config/pro.env into the
+# variable UBUNTU_PRO_TOKEN, or stop with an explanation if it isn't set up.
+# Call it at the start of any script that attaches VMs, so a missing token is
+# reported straight away rather than after minutes of setup.
+load_pro_token() {
+  local file="$REPO_ROOT/config/pro.env"
+  if [[ ! -f "$file" ]]; then
+    echo "Missing config/pro.env. Copy config/pro.env.example and add your Ubuntu Pro token." >&2
+    exit 1
+  fi
+  # shellcheck source=../config/pro.env.example
+  source "$file"
+  # Stop if the token is empty, or still the placeholder from the template.
+  if [[ -z "${UBUNTU_PRO_TOKEN:-}" || "$UBUNTU_PRO_TOKEN" == PASTE_* ]]; then
+    echo "config/pro.env has no Ubuntu Pro token yet. Paste yours between the quotes." >&2
+    exit 1
+  fi
+}
+
+# pro_attached: succeed if the given VM is attached to Ubuntu Pro.
+# "pro status --format json" describes the VM's Pro state; the small Python
+# program reads it and succeeds only if "attached" is true.
+pro_attached() {
+  multipass exec "$1" -- pro status --format json 2>/dev/null \
+    | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("attached") else 1)'
+}
+
+# pro_attach: attach the given VM to Ubuntu Pro (skipped if already attached).
+# Needs load_pro_token to have run first.
+# The token travels to the VM in a temporary file, never on a command line,
+# so it never shows up in process lists. The file is deleted straight after.
+pro_attach() {
+  local vm=$1
+  if pro_attached "$vm"; then
+    echo "$vm is already attached to Ubuntu Pro."
+    return 0
+  fi
+  # The file goes in build/ (git-ignored, and readable by the Multipass snap).
+  # "umask 077" makes it readable only by you; the ( ) keeps that setting
+  # from affecting the rest of the script.
+  local cfg="$BUILD_DIR/pro-attach-$vm.yaml"
+  ( umask 077; printf 'token: %s\n' "$UBUNTU_PRO_TOKEN" > "$cfg" )
+  multipass transfer "$cfg" "$vm:/tmp/pro-attach.yaml"
+  rm -f "$cfg"
+  # Attach, and delete the copy inside the VM whether attaching worked or not.
+  # "local rc=0; cmd || rc=$?" saves the result without stopping the script.
+  local rc=0
+  multipass exec "$vm" -- sudo pro attach --attach-config /tmp/pro-attach.yaml || rc=$?
+  multipass exec "$vm" -- rm -f /tmp/pro-attach.yaml
+  if [[ $rc -ne 0 ]] || ! pro_attached "$vm"; then
+    echo "ERROR: could not attach $vm to Ubuntu Pro. Check the token in config/pro.env," >&2
+    echo "and that it has free machines left at https://ubuntu.com/pro/dashboard." >&2
+    exit 1
+  fi
+  echo "$vm attached to Ubuntu Pro."
+}
+
+# pro_detach: detach the given VM from Ubuntu Pro, freeing its place on your
+# token. Used before deleting VMs. Never fails: a VM that is stopped, broken
+# or not attached is simply skipped.
+pro_detach() {
+  local vm=$1
+  multipass start "$vm" >/dev/null 2>&1 || true
+  if pro_attached "$vm"; then
+    multipass exec "$vm" -- sudo pro detach --assume-yes >/dev/null 2>&1 \
+      && echo "Detached $vm from Ubuntu Pro." \
+      || echo "WARNING: could not detach $vm; remove it at https://ubuntu.com/pro/dashboard."
+  fi
+  return 0
+}

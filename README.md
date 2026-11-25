@@ -18,6 +18,7 @@ It covers Landscape's five core functions:
 - Ubuntu 22.04 or 24.04 desktop with KVM (tested target: ThinkPad P16s Gen 4, 32 GB RAM, Ubuntu 24.04)
 - About 20 GiB free RAM and 80 GB free disk
 - Internet access (for packages and the mirror sync)
+- An Ubuntu Pro token with 4 free machines (a free personal token allows 5): get it at <https://ubuntu.com/pro/dashboard>
 - This repo cloned **under your home folder**, because the Multipass snap can only read files there
 
 ## Repository layout
@@ -26,6 +27,7 @@ It covers Landscape's five core functions:
 config/
   demo.env              All settings (VM names, sizes, FQDN, mirror). Edit here only.
   api.env.example       Template for your Landscape API keys (copy to api.env, git-ignored)
+  pro.env.example       Template for your Ubuntu Pro token (copy to pro.env, git-ignored)
 scripts/
   lib.sh                Shared helpers used by every script
   00-host-prep.sh       Install Multipass and check KVM
@@ -58,6 +60,10 @@ docs/
 ```bash
 # Make all scripts executable
 chmod +x scripts/*.sh scripts/remote/*.sh scripts/demo/*.sh
+# Add your Ubuntu Pro token (every VM is attached with it; Landscape needs it).
+# Copy the template, then paste your token between the quotes.
+cp config/pro.env.example config/pro.env
+nano config/pro.env
 
 # 1. Install Multipass and check KVM
 ./scripts/00-host-prep.sh

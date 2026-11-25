@@ -59,6 +59,17 @@ mkdir -p /etc/landscape
 openssl s_client -connect "$FQDN:443" -servername "$FQDN" </dev/null 2>/dev/null \
   | openssl x509 > /etc/landscape/server.pem
 
+# is_registered: succeed if this machine is already registered with Landscape.
+# "landscape-config --is-registered" answers that; we hide its printout.
+is_registered() { landscape-config --is-registered >/dev/null 2>&1; }
+
+# Already registered (for example when 04-launch-clients.sh is run again)?
+# Then stop here: registering again would add a duplicate machine in the portal.
+if is_registered; then
+  echo "$NAME is already registered with $FQDN, nothing to do."
+  exit 0
+fi
+
 # Register this machine with the Landscape server. Each "--option" is one
 # setting, and the "\" at line ends continue the command onto the next line.
 #   --silent                  don't ask questions; use the options given here
@@ -72,15 +83,38 @@ openssl s_client -connect "$FQDN:443" -servername "$FQDN" </dev/null 2>/dev/null
 #   --tags                    labels for grouping machines in the portal
 #   --exchange-interval etc.  check in every few seconds instead of the normal
 #                             several minutes, so the demo feels instant
-landscape-config --silent \
-  --computer-title "$NAME" \
-  --account-name standalone \
-  --url "https://$FQDN/message-system" \
-  --ping-url "http://$FQDN/ping" \
-  --ssl-public-key /etc/landscape/server.pem \
-  --include-manager-plugins ScriptExecution \
-  --script-users ALL \
-  --tags "$TAGS" \
-  --exchange-interval "$EXCHANGE" \
-  --urgent-exchange-interval "$URGENT" \
-  --ping-interval "$PING"
+register() {
+  landscape-config --silent \
+    --computer-title "$NAME" \
+    --account-name standalone \
+    --url "https://$FQDN/message-system" \
+    --ping-url "http://$FQDN/ping" \
+    --ssl-public-key /etc/landscape/server.pem \
+    --include-manager-plugins ScriptExecution \
+    --script-users ALL \
+    --tags "$TAGS" \
+    --exchange-interval "$EXCHANGE" \
+    --urgent-exchange-interval "$URGENT" \
+    --ping-interval "$PING"
+}
+
+# Try up to 3 times. Before each try, stop the Landscape client service:
+# after a failed earlier attempt (for example before the portal's administrator
+# existed) it keeps running in a stale state, and landscape-config then fails
+# with "ConnectError: No such file or directory".
+# landscape-config can print an error yet still report success, so we judge
+# each try by asking afterwards whether the machine is really registered.
+for attempt in 1 2 3; do
+  systemctl stop landscape-client || true
+  # "|| true": a failed try shouldn't stop the script; the check below decides.
+  register || true
+  if is_registered; then
+    echo "$NAME registered with $FQDN."
+    exit 0
+  fi
+  echo "Registration of $NAME didn't take (attempt $attempt of 3); retrying in 10 seconds."
+  sleep 10
+done
+echo "ERROR: $NAME could not register with $FQDN." >&2
+echo "Look at: sudo tail -n 30 /var/log/landscape/broker.log" >&2
+exit 1
